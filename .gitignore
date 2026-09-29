@@ -19,3 +19,6 @@ tools/tasks_one.json
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 出图结果（含车牌/轨迹信息，不入库）
+outputs/
