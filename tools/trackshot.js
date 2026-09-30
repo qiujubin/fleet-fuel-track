@@ -23,7 +23,10 @@ const URL = 'https://webgispro.e6yun.com/map/#/track';
 const PORT = 9222;
 
 const RATIO = 16 / 9;
-const FILL = 0.92;      // 轨迹外框占画面的比例（0.92 = 四周留 8% 边距；用户 2026-09-29 定回 8%）
+// 不对称留白（用户 2026-09-30 定）：车辆/停车/起终点图标都是从定位点向**右上方**伸出的，
+// 所以右边和上边多留，左边和下边少留，既不裁掉图标又不浪费画面
+const PAD = { left: 0.06, right: 0.12, top: 0.12, bottom: 0.06 };
+const FIT = 1 - (PAD.top + PAD.bottom);   // = 0.82，选 zoom 时判断能否装下
 // 画布渲染倍率：1 = 与浏览器里看到的像素密度一致（默认，用户偏好）；
 // 2 = 2 倍渲染，同样的地理范围但图像更细腻（放大看不糊）。可用 --dpr=2 切换
 // 渲染倍率：2 = 先按 2 倍渲染再缩到输出尺寸（缩小不失真，文字更锐利）
@@ -32,7 +35,10 @@ const DPR = parseInt((process.argv.find(a => a.startsWith('--dpr=')) || '--dpr=2
 // 可用 --w=1600 --h=900 覆盖；视口高度 = 画布高 + CHROME(119)
 const OUT_W = parseInt((process.argv.find(a => a.startsWith('--w=')) || '--w=1280').split('=')[1], 10);
 const OUT_H = parseInt((process.argv.find(a => a.startsWith('--h=')) || '--h=720').split('=')[1], 10);
-const VP_W = OUT_W, VP_H = OUT_H + 119;   // 119 = 顶部导航 + 底部列表占用的高度
+// 画布尺寸 ≠ 输出尺寸。画布开大一些，高德才能用上更高的 zoom 级别；
+// 出图时再缩小到目标宽度（缩小不失真），这样留白再多也不会把底图放大糊掉。
+const CANVAS_W = parseInt((process.argv.find(a => a.startsWith('--canvas=')) || '--canvas=2560').split('=')[1], 10);
+const VP_W = CANVAS_W, VP_H = Math.round(CANVAS_W * 9 / 16) + 119;  // 119 = 顶部导航+底部列表
 
 const argv = process.argv.slice(2).reduce((a, s) => {
   const m = s.match(/^--([^=]+)=(.*)$/); if (m) a[m[1]] = m[2]; else a[s.replace(/^--/, '')] = true; return a;
@@ -285,7 +291,7 @@ async function fitAndCrop(page) {
     let z = 3;
     for (let t = 17; t >= 3; t--) {
       const n = need(t);
-      if (n.h <= cont.height * cfg.fill && n.w <= cont.width * cfg.fill) { z = t; break; }
+      if (n.h <= cont.height * cfg.fit && n.w <= cont.width * cfg.fit) { z = t; break; }
     }
     let res = null, crop = null;
     for (let tryZ = z; tryZ >= 3; tryZ--) {
@@ -306,21 +312,23 @@ async function fitAndCrop(page) {
           x1 = Math.max(x1, r.right - cont.left); y1 = Math.max(y1, r.bottom - cont.top);
         });
         const bw = x1 - x0, bh = y1 - y0;
-        let h = Math.max(bh / cfg.fill, bw / cfg.fill / cfg.ratio);
-        h = Math.min(h, cont.height);
+        const P = cfg.pad;
+        // 按四边各自的留白比例反推裁剪框尺寸（不再居中，而是左/上按指定边距对齐）
+        const h = Math.max(bh / (1 - P.top - P.bottom), (bw / (1 - P.left - P.right)) * 9 / 16);
         const w = h * cfg.ratio;
-        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-        crop = {
-          w, h,
-          x: Math.max(0, Math.min(cx - w / 2, cont.width - w)),
-          y: Math.max(0, Math.min(cy - h / 2, cont.height - h)),
-        };
-        z = tryZ;
-        break;
+        if (h <= cont.height && w <= cont.width) {   // 装不下就降一级缩放再来，绝不裁掉内容
+          crop = {
+            w, h,
+            x: Math.max(0, Math.min(x0 - P.left * w, cont.width - w)),
+            y: Math.max(0, Math.min(y0 - P.top * h, cont.height - h)),
+          };
+          z = tryZ;
+          break;
+        }
       }
     }
     return { z, ...res, crop, cont: [cont.width, cont.height], span };
-  }, { fill: FILL, ratio: RATIO });
+  }, { pad: PAD, fit: FIT, ratio: RATIO });
 }
 
 async function hideUI(page) {
