@@ -33,10 +33,12 @@ try:
         w_pt, h_pt = w_px * 0.75, h_px * 0.75      # px -> point（96 DPI）
         cell = ws.Range(f"T{r}")
         # 先清掉该位置上的旧图，避免重复叠加
+        # 按坐标匹配删旧图（TopLeftCell 对浮动图片不可靠，曾导致重复叠加）
         for i in range(ws.Shapes.Count, 0, -1):
             try:
-                if ws.Shapes(i).TopLeftCell.Address(False, False) == f"T{r}":
-                    ws.Shapes(i).Delete()
+                s = ws.Shapes(i)
+                if abs(float(s.Top) - float(cell.Top)) < 5 and abs(float(s.Left) - float(cell.Left)) < 5:
+                    s.Delete()
             except Exception:
                 pass
         shp = ws.Shapes.AddPicture(img, LinkToFile=False, SaveWithDocument=True,

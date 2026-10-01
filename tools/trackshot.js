@@ -26,7 +26,9 @@ const RATIO = 16 / 9;
 // 不对称留白（用户 2026-09-30 定）：车辆/停车/起终点图标都是从定位点向**右上方**伸出的，
 // 所以右边和上边多留，左边和下边少留，既不裁掉图标又不浪费画面
 const PAD = { left: 0.06, right: 0.12, top: 0.12, bottom: 0.06 };
-const FIT = 1 - (PAD.top + PAD.bottom);   // = 0.82，选 zoom 时判断能否装下
+// ⚠️ 选 zoom 必须以「输出尺寸」为基准，不能用大画布的尺寸。
+// 否则画布一开大 zoom 就跟着往上跳（曾跳 1~2 级 = 画面放大 2~4 倍），这是用户明确不想要的。
+const FIT = 0.92;   // 与"画布=输出尺寸时"的观感一致，保持原来的缩放级别
 // 画布渲染倍率：1 = 与浏览器里看到的像素密度一致（默认，用户偏好）；
 // 2 = 2 倍渲染，同样的地理范围但图像更细腻（放大看不糊）。可用 --dpr=2 切换
 // 渲染倍率：2 = 先按 2 倍渲染再缩到输出尺寸（缩小不失真，文字更锐利）
@@ -197,7 +199,7 @@ async function getSpeeds(page) {
     return { max: grab('最高速度'), avg: grab('平均速度') };
   });
   let r = await read();
-  for (let i = 0; i < 4 && !(r.max && r.avg); i++) {   // 数值是异步加载的，最多再等 20s
+  for (let i = 0; i < 14 && !(r.max && r.avg); i++) {  // 数值异步加载；轨迹点多的车（9万+）要等更久，最多 70s
     await page.waitForTimeout(5000);
     r = await read();
   }
@@ -291,7 +293,8 @@ async function fitAndCrop(page) {
     let z = 3;
     for (let t = 17; t >= 3; t--) {
       const n = need(t);
-      if (n.h <= cont.height * cfg.fit && n.w <= cont.width * cfg.fit) { z = t; break; }
+      // 注意：这里用输出尺寸而非画布尺寸，保证缩放级别和以前一致
+      if (n.h <= cfg.outH * cfg.fit && n.w <= cfg.outW * cfg.fit) { z = t; break; }
     }
     let res = null, crop = null;
     for (let tryZ = z; tryZ >= 3; tryZ--) {
@@ -328,7 +331,7 @@ async function fitAndCrop(page) {
       }
     }
     return { z, ...res, crop, cont: [cont.width, cont.height], span };
-  }, { pad: PAD, fit: FIT, ratio: RATIO });
+  }, { pad: PAD, fit: FIT, ratio: RATIO, outW: OUT_W, outH: OUT_H });
 }
 
 async function hideUI(page) {
