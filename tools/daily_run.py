@@ -19,6 +19,7 @@ import json
 import shutil
 import zipfile
 import datetime
+import re
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(BASE, "tools")
@@ -69,7 +70,13 @@ if not NO_SHOT:
     log = r.stdout or ""
     # 从日志提取异常（FAILED / 速度未取到），正常行丢弃
     fails = [l for l in log.splitlines() if "FAILED" in l]
-    nospeed = [l for l in log.splitlines() if "(未取到)" in l or "最高速度: 0km/h" in l]
+    # 速度缺失行本身不含车牌，需回看上一行的 "车牌 OK ..."
+    lines = log.splitlines()
+    nospeed = []
+    for i, l in enumerate(lines):
+        if "(未取到)" in l or "最高速度: 0km/h" in l:
+            m = re.match(r"^(\S+)\s+OK", lines[i - 1]) if i > 0 else None
+            nospeed.append(f"{(m.group(1) if m else '?')}  {l.strip()}")
     if r.returncode != 0 or fails:
         print(log[-3000:]); die(f"截图失败 {len(fails)} 台，日志见上")
     if nospeed:
