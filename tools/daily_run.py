@@ -94,6 +94,12 @@ if r.returncode != 0 or "!!" in (r.stdout or ""):
 # ---------- 6. 验证（JSA 宏 + 写入值 + 图片数，只输出结论） ----------
 import openpyxl
 zo, zc = zipfile.ZipFile(bak), zipfile.ZipFile(XLSM)
+# 先做存在性检查：宏部件整个没了时给出明确指引，而不是抛 KeyError
+if "xl/JDEData.bin" not in zo.namelist():
+    die(f"JSA 宏部件已缺失（写入前备份里就没有 xl/JDEData.bin）。\n"
+        f"   常见原因：用 Excel 打开并保存过 .xlsm——Excel 会丢弃 WPS 的 JSA 部件。\n"
+        f"   修复：python tools/restore_jsa.py（从历史备份注入宏部件，需先改脚本里的备份日期）\n"
+        f"   本次备份：{bak}")
 jsa_ok = (
     zo.read("xl/JDEData.bin") == zc.read("xl/JDEData.bin")
     and all(zo.read(x) == zc.read(x) for x in zo.namelist()
